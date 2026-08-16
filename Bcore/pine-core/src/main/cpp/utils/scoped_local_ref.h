@@ -5,6 +5,7 @@
 #ifndef PINE_SCOPED_LOCAL_REF_H
 #define PINE_SCOPED_LOCAL_REF_H
 
+#include <cstddef>
 #include "macros.h"
 
 template<typename T>
@@ -71,32 +72,33 @@ public:
         return !env->IsSameObject(mLocalRef, other);
     }
 
-private:
+protected:
     JNIEnv* env;
     T mLocalRef;
 
+private:
     DISALLOW_COPY_AND_ASSIGN(ScopedLocalRef);
 };
 
 
 class ScopedLocalClassRef : public ScopedLocalRef<jclass> {
 public:
-    ScopedLocalClassRef(JNIEnv* env) : ScopedLocalRef(env) {
+    ScopedLocalClassRef(JNIEnv* env) : ScopedLocalRef<jclass>(env) {
     }
 
-    ScopedLocalClassRef(JNIEnv* env, jclass ref) : ScopedLocalRef(env, ref) {
+    ScopedLocalClassRef(JNIEnv* env, jclass ref) : ScopedLocalRef<jclass>(env, ref) {
     }
 
-    ScopedLocalClassRef(JNIEnv* env, const char* name) : ScopedLocalRef(env, env->FindClass(name)) {
+    ScopedLocalClassRef(JNIEnv* env, const char* name) : ScopedLocalRef<jclass>(env, env->FindClass(name)) {
     }
 
     jmethodID FindMethodID(const char* name, const char* signature) {
-        JNIEnv* env = Env();
-        jmethodID method = env->GetMethodID(Get(), name, signature);
+        JNIEnv* cur_env = this->Env();
+        jmethodID method = cur_env->GetMethodID(this->Get(), name, signature);
         if (LIKELY(method != nullptr)) {
             return method;
         } else {
-            env->ExceptionClear();
+            cur_env->ExceptionClear();
             return nullptr;
         }
     }
@@ -104,13 +106,13 @@ public:
 
 class ScopedLocalUtfStringRef : public ScopedLocalRef<jstring> {
 public:
-    ScopedLocalUtfStringRef(JNIEnv* env) : ScopedLocalRef(env) {
+    ScopedLocalUtfStringRef(JNIEnv* env) : ScopedLocalRef<jstring>(env) {
     }
 
-    ScopedLocalUtfStringRef(JNIEnv* env, jstring ref) : ScopedLocalRef(env, ref) {
+    ScopedLocalUtfStringRef(JNIEnv* env, jstring ref) : ScopedLocalRef<jstring>(env, ref) {
     }
 
-    ScopedLocalUtfStringRef(JNIEnv* env, const char* content) : ScopedLocalRef(
+    ScopedLocalUtfStringRef(JNIEnv* env, const char* content) : ScopedLocalRef<jstring>(
             env, env->NewStringUTF(content)) {
     }
 };
