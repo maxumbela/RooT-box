@@ -120,7 +120,7 @@ dependencies {
     implementation 'com.afollestad.material-dialogs:core:3.3.0'
     implementation 'com.afollestad.material-dialogs:input:3.3.0'
     //dialog
-    implementation 'com.github.nukc.stateview:kotlin:2.2.0'
+    implementation 'com.github.nukc:StateView:v3.0.2'
     //状态控制控件
     implementation 'com.roger.catloadinglibrary:catloadinglibrary:1.0.9'
     //加载dialog
