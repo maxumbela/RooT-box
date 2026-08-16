@@ -4,10 +4,12 @@
 .thumb; \
 .thumb_func; \
 .global name; \
+.hidden name; \
 name:
 
 #define VAR(name) \
 .global name; \
+.hidden name; \
 name:
 
 FUNCTION(pine_thumb_direct_jump_trampoline)

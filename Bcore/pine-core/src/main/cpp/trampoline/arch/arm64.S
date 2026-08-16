@@ -2,10 +2,12 @@
 .data; \
 .align 4; \
 .global name; \
+.hidden name; \
 name:
 
 #define VAR(name) \
 .global name; \
+.hidden name; \
 name:\
 name##_addr:
 
