@@ -31,14 +31,21 @@ public class ProxyActivity extends Activity {
         Log.d(TAG, "onCreate");
         finish();
 
-        HookManager.get().checkEnv(HCallbackProxy.class);
-//        HookManager.get().checkEnv(AppInstrumentation.class);
+        try {
+            HookManager.get().checkEnv(HCallbackProxy.class);
+        } catch (Throwable ignored) {}
 
-        ProxyActivityRecord record = ProxyActivityRecord.create(getIntent());
-        if (record.mTarget != null) {
-            record.mTarget.setExtrasClassLoader(BActivityThread.getApplication().getClassLoader());
-            startActivity(record.mTarget);
-            return;
+        try {
+            ProxyActivityRecord record = ProxyActivityRecord.create(getIntent());
+            if (record != null && record.mTarget != null) {
+                ClassLoader classLoader = (BActivityThread.getApplication() != null)
+                        ? BActivityThread.getApplication().getClassLoader()
+                        : getClassLoader();
+                record.mTarget.setExtrasClassLoader(classLoader);
+                startActivity(record.mTarget);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to launch target in ProxyActivity", t);
         }
     }
 

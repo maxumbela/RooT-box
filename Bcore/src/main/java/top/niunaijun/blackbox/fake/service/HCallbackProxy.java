@@ -8,8 +8,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 
-import androidx.annotation.NonNull;
-
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,7 +24,6 @@ import black.android.app.BRIActivityManager;
 import black.android.app.servertransaction.BRClientTransaction;
 import black.android.app.servertransaction.BRLaunchActivityItem;
 import black.android.app.servertransaction.LaunchActivityItemContext;
-import black.android.os.BRHandler;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.fake.hook.IInjectHook;
@@ -34,7 +31,6 @@ import top.niunaijun.blackbox.proxy.ProxyManifest;
 import top.niunaijun.blackbox.proxy.record.ProxyActivityRecord;
 import top.niunaijun.blackbox.utils.Slog;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
-
 
 /**
  * Created by Milk on 3/31/21.
@@ -47,15 +43,14 @@ import top.niunaijun.blackbox.utils.compat.BuildCompat;
 public class HCallbackProxy implements IInjectHook, Handler.Callback {
     public static final String TAG = "HCallbackStub";
     private Handler.Callback mOtherCallback;
-    private AtomicBoolean mBeing = new AtomicBoolean(false);
+    private final AtomicBoolean mBeing = new AtomicBoolean(false);
 
     private Handler.Callback getHCallback() {
-        return BRHandler.get(getH()).mCallback();
+        return BRActivityThread.get(BlackBoxCore.mainThread()).mH().mCallback();
     }
 
     private Handler getH() {
-        Object currentActivityThread = BlackBoxCore.mainThread();
-        return BRActivityThread.get(currentActivityThread).mH();
+        return BRActivityThread.get(BlackBoxCore.mainThread()).mH();
     }
 
     @Override
@@ -64,7 +59,7 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
         if (mOtherCallback != null && (mOtherCallback == this || mOtherCallback.getClass().getName().equals(this.getClass().getName()))) {
             mOtherCallback = null;
         }
-        BRHandler.get(getH())._set_mCallback(this);
+        BRActivityThread.get(BlackBoxCore.mainThread()).mH()._set_mCallback(this);
     }
 
     @Override
@@ -74,7 +69,7 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
     }
 
     @Override
-    public boolean handleMessage(@NonNull Message msg) {
+    public boolean handleMessage(Message msg) {
         if (!mBeing.getAndSet(true)) {
             try {
                 if (BuildCompat.isPie()) {
@@ -107,13 +102,15 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
     }
 
     private Object getLaunchActivityItem(Object clientTransaction) {
-        List<Object> mActivityCallbacks = BRClientTransaction.get(clientTransaction).mActivityCallbacks();
-
-        for (Object obj : mActivityCallbacks) {
-            if (BRLaunchActivityItem.getRealClass().getName().equals(obj.getClass().getCanonicalName())) {
-                return obj;
+        try {
+            List<Object> mActivityCallbacks = BRClientTransaction.get(clientTransaction).mActivityCallbacks();
+            if (mActivityCallbacks == null) return null;
+            for (Object obj : mActivityCallbacks) {
+                if (obj != null && BRLaunchActivityItem.getRealClass().getName().equals(obj.getClass().getCanonicalName())) {
+                    return obj;
+                }
             }
-        }
+        } catch (Throwable ignored) {}
         return null;
     }
 
@@ -129,16 +126,20 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
         if (r == null)
             return false;
 
-        Intent intent;
-        IBinder token;
-        if (BuildCompat.isPie()) {
-            intent = BRLaunchActivityItem.get(r).mIntent();
-            token = BRClientTransaction.get(client).mActivityToken();
-        } else {
-            ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(r);
-            intent = clientRecordContext.intent();
-            token = clientRecordContext.token();
-        }
+        Intent intent = null;
+        IBinder token = null;
+        try {
+            if (BuildCompat.isPie()) {
+                intent = BRLaunchActivityItem.get(r).mIntent();
+                token = BRClientTransaction.get(client).mActivityToken();
+            } else {
+                ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(r);
+                if (clientRecordContext != null) {
+                    intent = clientRecordContext.intent();
+                    token = clientRecordContext.token();
+                }
+            }
+        } catch (Throwable ignored) {}
 
         if (intent == null)
             return false;
@@ -152,15 +153,21 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
                 Intent launchIntentForPackage = BlackBoxCore.getBPackageManager().getLaunchIntentForPackage(activityInfo.packageName, stubRecord.mUserId);
                 intent.setExtrasClassLoader(this.getClass().getClassLoader());
                 ProxyActivityRecord.saveStub(intent, launchIntentForPackage, stubRecord.mActivityInfo, stubRecord.mActivityRecord, stubRecord.mUserId);
-                if (BuildCompat.isPie()) {
-                    LaunchActivityItemContext launchActivityItemContext = BRLaunchActivityItem.get(r);
-                    launchActivityItemContext._set_mIntent(intent);
-                    launchActivityItemContext._set_mInfo(activityInfo);
-                } else {
-                    ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(r);
-                    clientRecordContext._set_intent(intent);
-                    clientRecordContext._set_activityInfo(activityInfo);
-                }
+                try {
+                    if (BuildCompat.isPie()) {
+                        LaunchActivityItemContext launchActivityItemContext = BRLaunchActivityItem.get(r);
+                        if (launchActivityItemContext != null) {
+                            launchActivityItemContext._set_mIntent(intent);
+                            launchActivityItemContext._set_mInfo(activityInfo);
+                        }
+                    } else {
+                        ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(r);
+                        if (clientRecordContext != null) {
+                            clientRecordContext._set_intent(intent);
+                            clientRecordContext._set_activityInfo(activityInfo);
+                        }
+                    }
+                } catch (Throwable ignored) {}
                 return true;
             }
             // bind
@@ -170,26 +177,37 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
                 return true;
             }
 
-            int taskId = BRIActivityManager.get(BRActivityManagerNative.get().getDefault()).getTaskForActivity(token, false);
-            BlackBoxCore.getBActivityManager().onActivityCreated(taskId, token, stubRecord.mActivityRecord);
+            try {
+                int taskId = BRIActivityManager.get(BRActivityManagerNative.get().getDefault()).getTaskForActivity(token, false);
+                BlackBoxCore.getBActivityManager().onActivityCreated(taskId, token, stubRecord.mActivityRecord);
+            } catch (Throwable ignored) {}
 
-            if (BuildCompat.isS()) {
-                Object record = BRActivityThread.get(BlackBoxCore.mainThread()).getLaunchingActivity(token);
-                ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(record);
-                clientRecordContext._set_intent(stubRecord.mTarget);
-                clientRecordContext._set_activityInfo(activityInfo);
-                clientRecordContext._set_packageInfo(BActivityThread.currentActivityThread().getPackageInfo());
-
-                checkActivityClient();
-            } else if (BuildCompat.isPie()) {
-                LaunchActivityItemContext launchActivityItemContext = BRLaunchActivityItem.get(r);
-                launchActivityItemContext._set_mIntent(stubRecord.mTarget);
-                launchActivityItemContext._set_mInfo(activityInfo);
-            } else {
-                ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(r);
-                clientRecordContext._set_intent(stubRecord.mTarget);
-                clientRecordContext._set_activityInfo(activityInfo);
-            }
+            try {
+                if (BuildCompat.isS()) {
+                    Object record = BRActivityThread.get(BlackBoxCore.mainThread()).getLaunchingActivity(token);
+                    if (record != null) {
+                        ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(record);
+                        if (clientRecordContext != null) {
+                            clientRecordContext._set_intent(stubRecord.mTarget);
+                            clientRecordContext._set_activityInfo(activityInfo);
+                            clientRecordContext._set_packageInfo(BActivityThread.currentActivityThread().getPackageInfo());
+                        }
+                    }
+                    checkActivityClient();
+                } else if (BuildCompat.isPie()) {
+                    LaunchActivityItemContext launchActivityItemContext = BRLaunchActivityItem.get(r);
+                    if (launchActivityItemContext != null) {
+                        launchActivityItemContext._set_mIntent(stubRecord.mTarget);
+                        launchActivityItemContext._set_mInfo(activityInfo);
+                    }
+                } else {
+                    ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(r);
+                    if (clientRecordContext != null) {
+                        clientRecordContext._set_intent(stubRecord.mTarget);
+                        clientRecordContext._set_activityInfo(activityInfo);
+                    }
+                }
+            } catch (Throwable ignored) {}
         }
         return false;
     }
@@ -199,15 +217,17 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
             String appPackageName = BActivityThread.getAppPackageName();
             assert appPackageName != null;
 
-            ServiceInfo serviceInfo = BRActivityThreadCreateServiceData.get(data).info();
-            if (!serviceInfo.name.equals(ProxyManifest.getProxyService(BActivityThread.getAppPid()))
-                    && !serviceInfo.name.equals(ProxyManifest.getProxyJobService(BActivityThread.getAppPid()))) {
-                Slog.d(TAG, "handleCreateService: " + data);
-                Intent intent = new Intent();
-                intent.setComponent(new ComponentName(appPackageName, serviceInfo.name));
-                BlackBoxCore.getBActivityManager().startService(intent, null, false, BActivityThread.getUserId());
-                return true;
-            }
+            try {
+                ServiceInfo serviceInfo = BRActivityThreadCreateServiceData.get(data).info();
+                if (serviceInfo != null && !serviceInfo.name.equals(ProxyManifest.getProxyService(BActivityThread.getAppPid()))
+                        && !serviceInfo.name.equals(ProxyManifest.getProxyJobService(BActivityThread.getAppPid()))) {
+                    Slog.d(TAG, "handleCreateService: " + data);
+                    Intent intent = new Intent();
+                    intent.setComponent(new ComponentName(appPackageName, serviceInfo.name));
+                    BlackBoxCore.getBActivityManager().startService(intent, null, false, BActivityThread.getUserId());
+                    return true;
+                }
+            } catch (Throwable ignored) {}
         }
         return false;
     }

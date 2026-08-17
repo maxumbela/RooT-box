@@ -102,23 +102,34 @@ public final class AppInstrumentation extends BaseInstrumentationDelegate implem
     }
 
     private void checkActivity(Activity activity) {
+        if (activity == null) return;
         Log.d(TAG, "callActivityOnCreate: " + activity.getClass().getName());
-        HackAppUtils.enableQQLogOutput(activity.getPackageName(), activity.getClassLoader());
+        try {
+            HackAppUtils.enableQQLogOutput(activity.getPackageName(), activity.getClassLoader());
+        } catch (Throwable ignored) {}
         checkHCallback();
         HookManager.get().checkEnv(IActivityClientProxy.class);
-        ActivityInfo info = BRActivity.get(activity).mActivityInfo();
-        ContextCompat.fix(activity);
-        ActivityCompat.fix(activity);
-        if (info.theme != 0) {
-            activity.getTheme().applyStyle(info.theme, true);
+        try {
+            ActivityInfo info = BRActivity.get(activity).mActivityInfo();
+            ContextCompat.fix(activity);
+            ActivityCompat.fix(activity);
+            if (info != null && info.theme != 0) {
+                activity.getTheme().applyStyle(info.theme, true);
+            }
+            if (info != null) {
+                ActivityManagerCompat.setActivityOrientation(activity, info.screenOrientation);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "checkActivity failed non-fatally", t);
         }
-        ActivityManagerCompat.setActivityOrientation(activity, info.screenOrientation);
     }
 
     @Override
     public Application newApplication(ClassLoader cl, String className, Context context) throws InstantiationException, IllegalAccessException, ClassNotFoundException {
-        ContextCompat.fix(context);
-        BActivityThread.currentActivityThread().loadXposed(context);
+        try {
+            ContextCompat.fix(context);
+            BActivityThread.currentActivityThread().loadXposed(context);
+        } catch (Throwable ignored) {}
         return super.newApplication(cl, className, context);
     }
 

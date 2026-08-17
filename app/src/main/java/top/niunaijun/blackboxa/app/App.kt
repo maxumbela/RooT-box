@@ -3,13 +3,8 @@ package top.niunaijun.blackboxa.app
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
+import android.util.Log
 
-/**
- *
- * @Description:
- * @Author: wukaicheng
- * @CreateDate: 2021/4/29 21:21
- */
 class App : Application() {
 
     companion object {
@@ -27,8 +22,12 @@ class App : Application() {
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
         mContext = base!!
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("RooTBox_Crash", "Uncaught exception in thread ${thread.name}: ${throwable.message}", throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
         AppManager.doAttachBaseContext(base)
-
     }
 
     override fun onCreate() {
