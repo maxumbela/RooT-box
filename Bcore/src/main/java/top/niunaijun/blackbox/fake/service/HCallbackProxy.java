@@ -8,6 +8,8 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 
+import androidx.annotation.NonNull;
+
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,6 +26,7 @@ import black.android.app.BRIActivityManager;
 import black.android.app.servertransaction.BRClientTransaction;
 import black.android.app.servertransaction.BRLaunchActivityItem;
 import black.android.app.servertransaction.LaunchActivityItemContext;
+import black.android.os.BRHandler;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.fake.hook.IInjectHook;
@@ -43,14 +46,15 @@ import top.niunaijun.blackbox.utils.compat.BuildCompat;
 public class HCallbackProxy implements IInjectHook, Handler.Callback {
     public static final String TAG = "HCallbackStub";
     private Handler.Callback mOtherCallback;
-    private final AtomicBoolean mBeing = new AtomicBoolean(false);
+    private AtomicBoolean mBeing = new AtomicBoolean(false);
 
     private Handler.Callback getHCallback() {
-        return BRActivityThread.get(BlackBoxCore.mainThread()).mH().mCallback();
+        return BRHandler.get(getH()).mCallback();
     }
 
     private Handler getH() {
-        return BRActivityThread.get(BlackBoxCore.mainThread()).mH();
+        Object currentActivityThread = BlackBoxCore.mainThread();
+        return BRActivityThread.get(currentActivityThread).mH();
     }
 
     @Override
@@ -59,7 +63,7 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
         if (mOtherCallback != null && (mOtherCallback == this || mOtherCallback.getClass().getName().equals(this.getClass().getName()))) {
             mOtherCallback = null;
         }
-        BRActivityThread.get(BlackBoxCore.mainThread()).mH()._set_mCallback(this);
+        BRHandler.get(getH())._set_mCallback(this);
     }
 
     @Override
@@ -69,7 +73,7 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
     }
 
     @Override
-    public boolean handleMessage(Message msg) {
+    public boolean handleMessage(@NonNull Message msg) {
         if (!mBeing.getAndSet(true)) {
             try {
                 if (BuildCompat.isPie()) {
